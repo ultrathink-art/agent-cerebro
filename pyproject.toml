@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentrecall-memory"
-version = "0.1.1"
+name = "agent-cerebro"
+version = "0.1.0"
 description = "Persistent two-tier memory for AI agents. Short-term markdown + long-term SQLite with semantic search."
 readme = "README.md"
 license = "MIT"
