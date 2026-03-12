@@ -1,7 +1,7 @@
-# AgentRecall
+# Agent Cerebro
 
-[![PyPI](https://img.shields.io/pypi/v/agentrecall-memory)](https://pypi.org/project/agentrecall-memory/)
-[![Python](https://img.shields.io/pypi/pyversions/agentrecall-memory)](https://pypi.org/project/agentrecall-memory/)
+[![PyPI](https://img.shields.io/pypi/v/agent-cerebro)](https://pypi.org/project/agent-cerebro/)
+[![Python](https://img.shields.io/pypi/pyversions/agent-cerebro)](https://pypi.org/project/agent-cerebro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Persistent two-tier memory for AI agents. Battle-tested across 134 sessions with 10 agent roles.
@@ -11,14 +11,14 @@ Persistent two-tier memory for AI agents. Battle-tested across 134 sessions with
 ## Install
 
 ```bash
-pip install agentrecall-memory
+pip install agent-cerebro
 ```
 
 Zero required dependencies. SQLite is Python stdlib.
 
 Optional semantic search:
 ```bash
-pip install agentrecall-memory[embeddings]
+pip install agent-cerebro[embeddings]
 export OPENAI_API_KEY="sk-..."
 ```
 
@@ -28,20 +28,20 @@ export OPENAI_API_KEY="sk-..."
 
 ```bash
 # Initialize
-agentrecall init
+cerebro init
 
 # Store a memory (auto-dedup via cosine similarity >0.92)
-agentrecall store coder gotchas "kamal app exec spawns new container, use docker exec"
-agentrecall store social exhausted_stories "blue-green deploy order loss" --tags deploy,sqlite
+cerebro store coder gotchas "kamal app exec spawns new container, use docker exec"
+cerebro store social exhausted_stories "blue-green deploy order loss" --tags deploy,sqlite
 
 # Search (semantic + keyword fallback)
-agentrecall search coder gotchas "kamal file not found"
+cerebro search coder gotchas "kamal file not found"
 
 # List categories
-agentrecall list coder
+cerebro list coder
 
 # Check health
-agentrecall check --all
+cerebro check --all
 ```
 
 ### Python API
@@ -107,20 +107,22 @@ Environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_RECALL_HOME` | `~/.agentrecall` | Memory storage directory |
+| `AGENT_CEREBRO_HOME` | `~/.agent-cerebro` | Memory storage directory |
 | `OPENAI_API_KEY` | (none) | OpenAI API key for embeddings |
 | `UT_OPENAI_API_KEY` | (none) | Preferred over `OPENAI_API_KEY` |
 
 ## CLI Reference
 
 ```
-agentrecall store <role> <category> "text" [--tags t1,t2] [--db path]
-agentrecall search <role> <category> "query" [--db path]
-agentrecall list <role> [--db path]
-agentrecall check [--fix] [--long-term] [--all] [--dir path] [--db path]
-agentrecall init [--dir path]
-agentrecall migrate [--dry-run] [--rebuild] [--dir path] [--db path]
+cerebro store <role> <category> "text" [--tags t1,t2] [--db path]
+cerebro search <role> <category> "query" [--db path]
+cerebro list <role> [--db path]
+cerebro check [--fix] [--long-term] [--all] [--dir path] [--db path]
+cerebro init [--dir path]
+cerebro migrate [--dry-run] [--rebuild] [--dir path] [--db path]
 ```
+
+`agentrecall` and `agentmemory` also work as CLI aliases.
 
 Exit codes: `0` = success/found, `1` = not-found/validation-fail, `2` = input error.
 
@@ -129,8 +131,8 @@ Exit codes: `0` = success/found, `1` = not-found/validation-fail, `2` = input er
 If you have existing JSONL memory files:
 
 ```bash
-agentrecall migrate --dir /path/to/memory/
-agentrecall migrate --rebuild  # Re-embed entries missing embeddings
+cerebro migrate --dir /path/to/memory/
+cerebro migrate --rebuild  # Re-embed entries missing embeddings
 ```
 
 ## License

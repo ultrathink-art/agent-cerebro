@@ -33,11 +33,12 @@ all = ["openai>=1.0"]
 dev = ["pytest>=7.0", "pytest-cov"]
 
 [project.urls]
-Homepage = "https://github.com/ultrathink-art/agentrecall"
-Repository = "https://github.com/ultrathink-art/agentrecall"
-Issues = "https://github.com/ultrathink-art/agentrecall/issues"
+Homepage = "https://github.com/ultrathink-art/agent-cerebro"
+Repository = "https://github.com/ultrathink-art/agent-cerebro"
+Issues = "https://github.com/ultrathink-art/agent-cerebro/issues"
 
 [project.scripts]
+cerebro = "agentrecall.cli:main"
 agentrecall = "agentrecall.cli:main"
 agentmemory = "agentrecall.cli:main"
 
