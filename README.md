@@ -36,9 +36,29 @@ cerebro store social exhausted_stories "blue-green deploy order loss" --tags dep
 
 # Search (semantic + keyword fallback)
 cerebro search coder gotchas "kamal file not found"
+cerebro search coder gotchas "deploy issue" --tag critical
 
 # List categories
 cerebro list coder
+
+# Timeline — chronological view of all memories
+cerebro timeline coder
+cerebro timeline coder --last 7d
+cerebro timeline coder --last 2w --category gotchas
+
+# Export — dump all memories for a role
+cerebro export coder --format md > coder_memories.md
+cerebro export coder --format json > coder_memories.json
+cerebro export coder --format json --category gotchas
+
+# Stats — storage metrics and category breakdown
+cerebro stats
+cerebro stats coder
+
+# Garbage collection — find and remove near-duplicates
+cerebro gc coder --dry-run
+cerebro gc coder --apply
+cerebro gc coder --threshold 0.85 --category gotchas
 
 # Check health
 cerebro check --all
@@ -47,20 +67,36 @@ cerebro check --all
 ### Python API
 
 ```python
-from agentrecall import MemoryStore, MemorySearch
+from agentrecall import MemoryStore, MemorySearch, MemoryTimeline, MemoryExport, MemoryStats, MemoryGC
 
 # Store
 store = MemoryStore()
 store.store("coder", "gotchas", "kamal spawns new container", tags=["kamal", "docker"])
 
-# Search
+# Search (with optional tag filter)
 search = MemorySearch()
 results = search.search("coder", "gotchas", "kamal file not found")
-for text in results:
-    print(text)
+results = search.search("coder", "gotchas", "deploy issue", tag="critical")
 
-# List categories
-categories = store.list_categories("coder")
+# Timeline
+timeline = MemoryTimeline()
+entries = timeline.timeline("coder", last="7d")
+
+# Export
+export = MemoryExport()
+markdown = export.export("coder", fmt="md")
+json_str = export.export("coder", fmt="json", category="gotchas")
+
+# Stats
+stats = MemoryStats()
+metrics = stats.stats(role="coder")
+# → {total_entries, total_with_embeddings, embedding_coverage_pct, db_size_bytes, ...}
+
+# Garbage collection
+gc = MemoryGC()
+result = gc.gc("coder", dry_run=True)
+# → {found: 3, removed: 0, duplicates: [...]}
+result = gc.gc("coder", dry_run=False)  # actually delete
 ```
 
 ## How It Works
@@ -86,12 +122,23 @@ Without an API key, falls back to exact text matching.
 3. Return entries above threshold (0.75), sorted by similarity
 4. If no embedding matches: keyword fallback (>=50% keyword match)
 5. No API key: keyword-only search
+6. Optional `--tag` filter narrows results to entries with a specific tag
+
+### Garbage Collection
+
+`cerebro gc` finds near-duplicate entries within each role/category pair:
+- With embeddings: cosine similarity >= threshold (default 0.92)
+- Without embeddings: exact text match (case-insensitive)
+- Older entry (lower ID) is kept; newer duplicate is removed
+- `--dry-run` (default) reports without deleting
+- `--apply` actually removes duplicates
 
 ### Graceful Degradation
 
 Works fully offline without an OpenAI API key:
 - **Store**: exact text dedup (case-insensitive)
 - **Search**: keyword matching (>=50% of query words must appear)
+- **GC**: exact text match dedup only
 
 ## Agent Skills
 
@@ -115,8 +162,12 @@ Environment variables:
 
 ```
 cerebro store <role> <category> "text" [--tags t1,t2] [--db path]
-cerebro search <role> <category> "query" [--db path]
+cerebro search <role> <category> "query" [--tag tagname] [--db path]
 cerebro list <role> [--db path]
+cerebro timeline <role> [--last 7d] [--category cat] [--limit N] [--db path]
+cerebro export <role> [--format md|json] [--category cat] [--db path]
+cerebro stats [role] [--db path]
+cerebro gc <role> [--dry-run] [--apply] [--threshold 0.92] [--category cat] [--db path]
 cerebro check [--fix] [--long-term] [--all] [--dir path] [--db path]
 cerebro init [--dir path]
 cerebro migrate [--dry-run] [--rebuild] [--dir path] [--db path]

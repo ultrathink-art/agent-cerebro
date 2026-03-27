@@ -43,12 +43,24 @@ class MemorySearch:
         category: str,
         query: str,
         embed_fn=None,
+        tag: Optional[str] = None,
     ) -> List[str]:
-        """Search entries semantically. Returns list of matching texts."""
+        """Search entries semantically. Returns list of matching texts.
+
+        Args:
+            role: Agent role.
+            category: Category to search.
+            query: Search query text.
+            embed_fn: Optional embedding function override.
+            tag: Optional tag filter — only return entries containing this tag.
+        """
         rows = self.conn.execute(
             "SELECT text, embedding, tags FROM entries WHERE role = ? AND category = ?",
             (role, category),
         ).fetchall()
+
+        if tag:
+            rows = [r for r in rows if tag in _parse_tags(r[2])]
 
         if not rows:
             return []

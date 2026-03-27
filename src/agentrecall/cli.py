@@ -4,12 +4,16 @@ Usage:
     cerebro <command> [options]
 
 Commands:
-    store    Store an entry with semantic dedup
-    search   Search entries (semantic + keyword fallback)
-    list     List categories for a role
-    check    Validate memory files and DB health
-    init     Initialize memory system for a new project
-    migrate  Migrate JSONL files to SQLite
+    store      Store an entry with semantic dedup
+    search     Search entries (semantic + keyword fallback)
+    list       List categories for a role
+    timeline   Chronological view of memories with timestamps
+    export     Export memories as markdown or JSON
+    stats      Storage metrics, embedding coverage, category breakdown
+    gc         Garbage collection — find/remove near-duplicate entries
+    check      Validate memory files and DB health
+    init       Initialize memory system for a new project
+    migrate    Migrate JSONL files to SQLite
 """
 from __future__ import annotations
 
@@ -43,6 +47,7 @@ def _add_search_parser(subparsers):
     p.add_argument("role", help="Agent role")
     p.add_argument("category", help="Category to search")
     p.add_argument("query", help="Search query")
+    p.add_argument("--tag", help="Filter results to entries with this tag", default=None)
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_search)
 
@@ -52,6 +57,47 @@ def _add_list_parser(subparsers):
     p.add_argument("role", help="Agent role")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_list)
+
+
+def _add_timeline_parser(subparsers):
+    p = subparsers.add_parser("timeline", help="Chronological view of memories")
+    p.add_argument("role", help="Agent role")
+    p.add_argument("--last", help="Duration filter (e.g., 7d, 2w, 3m)", default=None)
+    p.add_argument("--category", help="Filter to specific category", default=None)
+    p.add_argument("--limit", type=int, help="Max entries (default: 100)", default=100)
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_timeline)
+
+
+def _add_export_parser(subparsers):
+    p = subparsers.add_parser("export", help="Export memories as markdown or JSON")
+    p.add_argument("role", help="Agent role to export")
+    p.add_argument("--format", dest="fmt", choices=["md", "json"], default="md",
+                   help="Output format (default: md)")
+    p.add_argument("--category", help="Filter to specific category", default=None)
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_export)
+
+
+def _add_stats_parser(subparsers):
+    p = subparsers.add_parser("stats", help="Storage metrics and statistics")
+    p.add_argument("role", nargs="?", default=None, help="Agent role (omit for all)")
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_stats)
+
+
+def _add_gc_parser(subparsers):
+    p = subparsers.add_parser("gc", help="Garbage collect near-duplicate entries")
+    p.add_argument("role", help="Agent role")
+    p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                   help="Report duplicates without removing (default)")
+    p.add_argument("--apply", action="store_true",
+                   help="Actually delete duplicate entries")
+    p.add_argument("--threshold", type=float, default=None,
+                   help=f"Similarity threshold (default: dedup threshold)")
+    p.add_argument("--category", help="Filter to specific category", default=None)
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_gc)
 
 
 def _add_check_parser(subparsers):
@@ -92,13 +138,122 @@ def _cmd_store(args):
 def _cmd_search(args):
     from agentrecall.longterm.search import run_search
 
-    return run_search(args.role, args.category, args.query, db_path=args.db)
+    return run_search(args.role, args.category, args.query, tag=args.tag, db_path=args.db)
 
 
 def _cmd_list(args):
     from agentrecall.longterm.search import run_list
 
     return run_list(args.role, db_path=args.db)
+
+
+def _cmd_timeline(args):
+    from agentrecall.core.timeline import MemoryTimeline
+
+    tl = MemoryTimeline(db_path=args.db)
+    try:
+        entries = tl.timeline(
+            args.role,
+            last=args.last,
+            category=args.category,
+            limit=args.limit,
+        )
+
+        if not entries:
+            print(f"No entries found for {args.role}", file=sys.stderr)
+            return 1
+
+        for entry in entries:
+            tags_str = ""
+            if entry["tags"]:
+                tags_str = f"  [{', '.join(entry['tags'])}]"
+            print(f"[{entry['created_at']}] {entry['category']}: {entry['text']}{tags_str}")
+
+        return 0
+    finally:
+        tl.close()
+
+
+def _cmd_export(args):
+    from agentrecall.core.export import MemoryExport
+
+    exp = MemoryExport(db_path=args.db)
+    try:
+        output = exp.export(args.role, fmt=args.fmt, category=args.category)
+        print(output, end="")
+        return 0
+    finally:
+        exp.close()
+
+
+def _cmd_stats(args):
+    from agentrecall.core.stats import MemoryStats
+
+    ms = MemoryStats(db_path=args.db)
+    try:
+        s = ms.stats(role=args.role)
+
+        role_label = args.role or "all roles"
+        print(f"Memory Stats ({role_label})")
+        print("=" * 50)
+        print(f"  Total entries:      {s['total_entries']}")
+        print(f"  With embeddings:    {s['total_with_embeddings']}")
+        print(f"  Embedding coverage: {s['embedding_coverage_pct']}%")
+        print(f"  Database size:      {_human_size(s['db_size_bytes'])}")
+
+        if s["oldest_entry"]:
+            print(f"  Date range:         {s['oldest_entry']} — {s['newest_entry']}")
+
+        if not args.role and s["roles"]:
+            print(f"  Roles:              {', '.join(s['roles'])}")
+
+        if s["categories"]:
+            print()
+            print("Categories:")
+            for cat in s["categories"]:
+                emb_pct = round(100 * cat["with_embeddings"] / cat["count"], 1) if cat["count"] > 0 else 0
+                print(f"  {cat['role']}/{cat['category']:<25} {cat['count']:>5} entries  ({emb_pct}% embedded)")
+
+        return 0
+    finally:
+        ms.close()
+
+
+def _cmd_gc(args):
+    from agentrecall.core.gc import MemoryGC
+
+    dry_run = not args.apply
+    gc = MemoryGC(db_path=args.db)
+    try:
+        result = gc.gc(
+            args.role,
+            dry_run=dry_run,
+            threshold=args.threshold,
+            category=args.category,
+        )
+
+        if result["found"] == 0:
+            print(f"No duplicates found for {args.role}")
+            return 0
+
+        mode = "DRY RUN" if dry_run else "APPLIED"
+        print(f"GC [{mode}] — {result['found']} duplicate(s) found")
+        print()
+
+        for d in result["duplicates"]:
+            print(f"  [{d['category']}] similarity={d['similarity']}")
+            print(f"    KEEP   (#{d['keep_id']}): {d['keep_text'][:80]}")
+            print(f"    REMOVE (#{d['remove_id']}): {d['remove_text'][:80]}")
+            print()
+
+        if dry_run:
+            print(f"Run with --apply to remove {result['found']} duplicate(s)")
+        else:
+            print(f"Removed {result['removed']} duplicate(s)")
+
+        return 0
+    finally:
+        gc.close()
 
 
 def _cmd_check(args):
@@ -266,6 +421,16 @@ def _cmd_migrate(args):
     return run_migrate(memory_dir, dry_run=args.dry_run, db_path=db_path)
 
 
+def _human_size(size_bytes: int) -> str:
+    """Format bytes as human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="cerebro",
@@ -281,6 +446,10 @@ def main(argv=None):
     _add_store_parser(subparsers)
     _add_search_parser(subparsers)
     _add_list_parser(subparsers)
+    _add_timeline_parser(subparsers)
+    _add_export_parser(subparsers)
+    _add_stats_parser(subparsers)
+    _add_gc_parser(subparsers)
     _add_check_parser(subparsers)
     _add_init_parser(subparsers)
     _add_migrate_parser(subparsers)

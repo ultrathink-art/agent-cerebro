@@ -12,6 +12,7 @@ def run_search(
     role: str,
     category: str,
     query: str,
+    tag: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> int:
     """Search entries. Returns exit code (0=found, 1=not found)."""
@@ -22,9 +23,10 @@ def run_search(
             print(f"No entries found for {role}/{category}", file=sys.stderr)
             return 1
 
-        matches = search.search(role, category, query)
+        matches = search.search(role, category, query, tag=tag)
         if not matches:
-            print(f"No matches for: {query}", file=sys.stderr)
+            tag_msg = f" (tag: {tag})" if tag else ""
+            print(f"No matches for: {query}{tag_msg}", file=sys.stderr)
             print(f"  (searched {count} entries in {role}/{category})", file=sys.stderr)
             return 1
 

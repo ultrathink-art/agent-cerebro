@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0 (2026-03-27)
+
+Five new features for memory management at scale:
+
+- **Timeline** — chronological view of memories: `cerebro timeline [role] [--last 7d] [--category cat]`
+- **Export** — dump memories as markdown or JSON: `cerebro export [role] --format md|json`
+- **Stats** — storage metrics, embedding coverage, category breakdown: `cerebro stats [role]`
+- **Garbage collection** — find and remove near-duplicate entries: `cerebro gc [role] --dry-run|--apply`
+- **Tag filtering on search** — narrow search results by tag: `cerebro search role cat query --tag important`
+
+New Python API classes: `MemoryTimeline`, `MemoryExport`, `MemoryStats`, `MemoryGC`.
+
+66 new tests (174 total).
+
+## 0.2.0 (2026-03-12)
+
+Complete rebrand from AgentRecall to Agent Cerebro.
+
+- CLI command: `cerebro` (plus `agentrecall`, `agentmemory` aliases)
+- Environment variable: `AGENT_CEREBRO_HOME` (with `AGENT_RECALL_HOME` fallback)
+- Default storage: `~/.agent-cerebro/`
+
 ## 0.1.2 (2026-03-12)
 
 Renamed PyPI package from `agentrecall-memory` to `agent-cerebro` (v0.1.0). Python import name (`from agentrecall import ...`) and CLI commands (`agentrecall`/`cerebro`) are unchanged.
