@@ -104,6 +104,30 @@ class TestGetDbPath:
         assert path.endswith("memory.sqlite3")
         assert ".agent-cerebro" in path
 
+    def test_empty_env_uses_fallback(self, monkeypatch):
+        monkeypatch.setenv("AGENT_CEREBRO_HOME", "")
+        monkeypatch.delenv("AGENT_RECALL_HOME", raising=False)
+        path = get_db_path()
+        assert ".agent-cerebro" in path
+
+    def test_whitespace_env_uses_fallback(self, monkeypatch):
+        monkeypatch.setenv("AGENT_CEREBRO_HOME", "  ")
+        monkeypatch.delenv("AGENT_RECALL_HOME", raising=False)
+        path = get_db_path()
+        assert ".agent-cerebro" in path
+
+    def test_recall_home_fallback(self, monkeypatch):
+        monkeypatch.delenv("AGENT_CEREBRO_HOME", raising=False)
+        monkeypatch.setenv("AGENT_RECALL_HOME", "/legacy/path")
+        path = get_db_path()
+        assert path == "/legacy/path/memory.sqlite3"
+
+    def test_cerebro_home_takes_precedence(self, monkeypatch):
+        monkeypatch.setenv("AGENT_CEREBRO_HOME", "/primary")
+        monkeypatch.setenv("AGENT_RECALL_HOME", "/legacy")
+        path = get_db_path()
+        assert path == "/primary/memory.sqlite3"
+
     def test_custom_path(self):
         path = get_db_path("/custom/dir")
         assert path == "/custom/dir/memory.sqlite3"
