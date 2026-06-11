@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 (2026-06-11)
+
+Network resilience + output control, driven by dogfooding our own agents.
+
+- **Retry + graceful degradation on embedding calls** — the OpenAI embedding
+  request now retries transient failures (timeouts, dropped connections, HTTP
+  429/5xx) with exponential backoff + jitter, honoring `Retry-After` on 429.
+  After exhausting retries — or on a non-retryable error like 401 — `store` and
+  `search` print a warning and fall back to keyword/exact-match instead of
+  raising. Previously a single network blip hard-failed the command mid-session.
+- **Tunable resilience** — `CEREBRO_EMBED_MAX_RETRIES` (default 3) and
+  `CEREBRO_EMBED_TIMEOUT` (default 30s) environment variables.
+- **`cerebro search --limit N`** — cap results to the top-N by relevance, to keep
+  agent context windows tight on large categories.
+- **Accurate degradation warning** — search no longer claims "No OpenAI API key"
+  when the real cause is a network failure; it now says "embeddings unavailable".
+
+`get_embedding` / `get_embeddings_batch` now return `None` on persistent failure
+(matching their existing no-API-key contract) rather than raising `RuntimeError`.
+
+23 new tests (197 total).
+
 ## 0.3.0 (2026-03-27)
 
 Five new features for memory management at scale:

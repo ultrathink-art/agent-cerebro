@@ -121,8 +121,9 @@ Without an API key, falls back to exact text matching.
 2. Compute cosine similarity against all entries with embeddings
 3. Return entries above threshold (0.75), sorted by similarity
 4. If no embedding matches: keyword fallback (>=50% keyword match)
-5. No API key: keyword-only search
+5. No API key (or embeddings unavailable): keyword-only search
 6. Optional `--tag` filter narrows results to entries with a specific tag
+7. Optional `--limit N` caps output to the top-N results (keeps agent context tight)
 
 ### Garbage Collection
 
@@ -139,6 +140,18 @@ Works fully offline without an OpenAI API key:
 - **Store**: exact text dedup (case-insensitive)
 - **Search**: keyword matching (>=50% of query words must appear)
 - **GC**: exact text match dedup only
+
+### Network Resilience
+
+Embedding calls are wrapped in a retry loop with exponential backoff + jitter.
+Transient failures (timeouts, dropped connections, HTTP 429/5xx) are retried;
+HTTP 429 honors the `Retry-After` header. After exhausting retries — or on a
+non-retryable error (e.g. 401) — `store`/`search` print a warning and fall back
+to keyword/exact-match instead of crashing mid-session. Auth/4xx errors are not
+retried (no point burning attempts on a bad key).
+
+Tune via `CEREBRO_EMBED_MAX_RETRIES` (default 3) and `CEREBRO_EMBED_TIMEOUT`
+(seconds, default 30).
 
 ## Agent Skills
 
@@ -157,12 +170,14 @@ Environment variables:
 | `AGENT_CEREBRO_HOME` | `~/.agent-cerebro` | Memory storage directory |
 | `OPENAI_API_KEY` | (none) | OpenAI API key for embeddings |
 | `UT_OPENAI_API_KEY` | (none) | Preferred over `OPENAI_API_KEY` |
+| `CEREBRO_EMBED_MAX_RETRIES` | `3` | Retries on transient embedding-API failures |
+| `CEREBRO_EMBED_TIMEOUT` | `30` | Per-request embedding timeout (seconds) |
 
 ## CLI Reference
 
 ```
 cerebro store <role> <category> "text" [--tags t1,t2] [--db path]
-cerebro search <role> <category> "query" [--tag tagname] [--db path]
+cerebro search <role> <category> "query" [--tag tagname] [--limit N] [--db path]
 cerebro list <role> [--db path]
 cerebro timeline <role> [--last 7d] [--category cat] [--limit N] [--db path]
 cerebro export <role> [--format md|json] [--category cat] [--db path]

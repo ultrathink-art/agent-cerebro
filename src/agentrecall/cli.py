@@ -48,6 +48,8 @@ def _add_search_parser(subparsers):
     p.add_argument("category", help="Category to search")
     p.add_argument("query", help="Search query")
     p.add_argument("--tag", help="Filter results to entries with this tag", default=None)
+    p.add_argument("--limit", type=int, default=None,
+                   help="Max number of results (top-N by relevance)")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_search)
 
@@ -138,7 +140,8 @@ def _cmd_store(args):
 def _cmd_search(args):
     from agentrecall.longterm.search import run_search
 
-    return run_search(args.role, args.category, args.query, tag=args.tag, db_path=args.db)
+    return run_search(args.role, args.category, args.query, tag=args.tag,
+                      limit=args.limit, db_path=args.db)
 
 
 def _cmd_list(args):

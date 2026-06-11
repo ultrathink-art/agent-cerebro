@@ -67,6 +67,65 @@ class TestSearch:
         search.close()
 
 
+class TestSearchLimit:
+    def _seed(self, tmp_db):
+        """Insert 3 entries sharing one embedding (all match the query)."""
+        import sqlite3
+
+        from agentrecall.core.embeddings import pack_embedding
+        from conftest import fake_embedding
+
+        blob = pack_embedding(fake_embedding(0.1))
+        conn = sqlite3.connect(tmp_db)
+        for txt in ("deploy order one", "deploy order two", "deploy order three"):
+            conn.execute(
+                "INSERT INTO entries (role, category, text, embedding, tags, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("r", "c", txt, blob, "[]", "2026-01-01"),
+            )
+        conn.commit()
+        conn.close()
+
+    def test_limit_caps_results(self, tmp_db):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        result = search.search("r", "c", "deploy", embed_fn=make_embed_fn(0.1), limit=2)
+        assert len(result) == 2
+        search.close()
+
+    def test_no_limit_returns_all(self, tmp_db):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        result = search.search("r", "c", "deploy", embed_fn=make_embed_fn(0.1))
+        assert len(result) == 3
+        search.close()
+
+    def test_limit_caps_keyword_fallback(self, tmp_db):
+        store = MemoryStore(db_path=tmp_db)
+        store.store("r", "c", "deploy order one", embed_fn=null_embed_fn)
+        store.store("r", "c", "deploy order two", embed_fn=null_embed_fn)
+        store.close()
+        search = MemorySearch(db_path=tmp_db)
+        result = search.search("r", "c", "deploy order", embed_fn=null_embed_fn, limit=1)
+        assert len(result) == 1
+        search.close()
+
+    def test_zero_limit_is_no_cap(self, tmp_db):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        result = search.search("r", "c", "deploy", embed_fn=make_embed_fn(0.1), limit=0)
+        assert len(result) == 3
+        search.close()
+
+    def test_cli_search_accepts_limit_flag(self, tmp_db):
+        self._seed(tmp_db)
+        from agentrecall.longterm.search import run_search
+
+        # Embeddings unavailable in this path → keyword fallback, still limited.
+        rc = run_search("r", "c", "deploy", limit=1, db_path=tmp_db)
+        assert rc == 0
+
+
 class TestKeywordFallback:
     def test_requires_half_keywords(self):
         entries = [

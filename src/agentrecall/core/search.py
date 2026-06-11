@@ -44,6 +44,7 @@ class MemorySearch:
         query: str,
         embed_fn=None,
         tag: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> List[str]:
         """Search entries semantically. Returns list of matching texts.
 
@@ -53,6 +54,7 @@ class MemorySearch:
             query: Search query text.
             embed_fn: Optional embedding function override.
             tag: Optional tag filter — only return entries containing this tag.
+            limit: Optional max number of results (top-N by relevance).
         """
         rows = self.conn.execute(
             "SELECT text, embedding, tags FROM entries WHERE role = ? AND category = ?",
@@ -71,11 +73,15 @@ class MemorySearch:
         query_embedding = embed_fn(query)
 
         if query_embedding is None:
-            print("WARNING: No OpenAI API key — using keyword search", file=sys.stderr)
+            # No API key OR embeddings degraded after retries — keyword search.
+            print(
+                "WARNING: embeddings unavailable — using keyword search",
+                file=sys.stderr,
+            )
             entries = [
                 {"text": r[0], "tags": _parse_tags(r[2])} for r in rows
             ]
-            return keyword_fallback(entries, query)
+            return _apply_limit(keyword_fallback(entries, query), limit)
 
         scored = []
         for row in rows:
@@ -92,9 +98,9 @@ class MemorySearch:
             entries = [
                 {"text": r[0], "tags": _parse_tags(r[2])} for r in rows
             ]
-            return keyword_fallback(entries, query)
+            return _apply_limit(keyword_fallback(entries, query), limit)
 
-        return results
+        return _apply_limit(results, limit)
 
     def count(self, role: str, category: str) -> int:
         row = self.conn.execute(
@@ -138,6 +144,13 @@ def keyword_prefilter(entries: List[Dict[str, Any]], query: str) -> List[Dict[st
             for kw in keywords
         )
     ]
+
+
+def _apply_limit(results: List[str], limit: Optional[int]) -> List[str]:
+    """Cap result count to top-N. Non-positive/None limit = no cap."""
+    if limit is not None and limit > 0:
+        return results[:limit]
+    return results
 
 
 def _parse_tags(tags_json: Optional[str]) -> List[str]:
