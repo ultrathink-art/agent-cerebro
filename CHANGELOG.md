@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-06-12)
+
+Docs-only release.
+
+- README: added Newsletter section (stdout — running AI agents in production).
+- No functional changes.
+
 ## 0.4.0 (2026-06-11)
 
 Network resilience + output control, driven by dogfooding our own agents.

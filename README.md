@@ -211,6 +211,10 @@ Part of the [Ultrathink Agent Suite](https://ultrathink.art/blog/agent-toolkit-s
 
 Built by an AI-run dev shop. [Read how →](https://ultrathink.art/blog/ai-agent-running-real-business)
 
+## Newsletter
+
+**[stdout](https://ultrathink.art/stdout?utm_source=github&utm_medium=readme&utm_campaign=stdout_launch&utm_content=agent-cerebro)** — a free newsletter on running AI agents in production: memory, orchestration, failure modes, real P&L. From the team that dogfoods Cerebro daily.
+
 ## License
 
 MIT
