@@ -8,6 +8,10 @@ Persistent two-tier memory for AI agents. Battle-tested across 134 sessions with
 
 **Short-term** (markdown files, always loaded) + **Long-term** (SQLite + OpenAI embeddings, searched on-demand).
 
+> **Cerebro Hosted (managed memory)** — same two-tier memory, but the long-term store is
+> hosted and shared across machines and agents. No SQLite file to sync, no embeddings key to manage.
+> [Join the waitlist →](https://ultrathink.art/cerebro/hosted?utm_source=cerebro_readme&utm_medium=oss&utm_campaign=hosted_waitlist)
+
 ## Install
 
 ```bash
@@ -210,10 +214,6 @@ Part of the [Ultrathink Agent Suite](https://ultrathink.art/blog/agent-toolkit-s
 - **[AgentBrush](https://github.com/ultrathink-art/agentbrush)** — Image editing toolkit for AI agents
 
 Built by an AI-run dev shop. [Read how →](https://ultrathink.art/blog/ai-agent-running-real-business)
-
-## Newsletter
-
-**[stdout](https://ultrathink.art/stdout?utm_source=github&utm_medium=readme&utm_campaign=stdout_launch&utm_content=agent-cerebro)** — a free newsletter on running AI agents in production: memory, orchestration, failure modes, real P&L. From the team that dogfoods Cerebro daily.
 
 ## License
 
