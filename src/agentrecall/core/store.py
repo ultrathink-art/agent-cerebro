@@ -25,9 +25,14 @@ class DuplicateError(Exception):
 class MemoryStore:
     """Store entries in SQLite with semantic dedup."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        connection: Optional[sqlite3.Connection] = None,
+    ):
         self.db_path = db_path
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn = connection
+        self._owns_connection = connection is None
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -36,12 +41,12 @@ class MemoryStore:
         return self._conn
 
     def close(self) -> None:
-        if self._conn is not None:
+        if self._conn is not None and self._owns_connection:
             try:
                 self._conn.close()
             except Exception:
                 pass
-            self._conn = None
+        self._conn = None
 
     def store(
         self,
@@ -50,6 +55,9 @@ class MemoryStore:
         text: str,
         tags: Optional[List[str]] = None,
         embed_fn=None,
+        *,
+        _exclude_entry_id: Optional[int] = None,
+        _commit: bool = True,
     ) -> Dict[str, Any]:
         """Store a new entry. Returns entry dict on success.
 
@@ -64,11 +72,17 @@ class MemoryStore:
 
         embedding = embed_fn(text)
 
+        dedup_query = (
+            "SELECT id, text, embedding FROM entries "
+            "WHERE role = ? AND category = ? AND invalidated_at IS NULL"
+        )
+        dedup_params: List[Any] = [role, category]
+        if _exclude_entry_id is not None:
+            dedup_query += " AND id != ?"
+            dedup_params.append(_exclude_entry_id)
+
+        rows = self.conn.execute(dedup_query, dedup_params).fetchall()
         if embedding is not None:
-            rows = self.conn.execute(
-                "SELECT id, text, embedding FROM entries WHERE role = ? AND category = ?",
-                (role, category),
-            ).fetchall()
             for row in rows:
                 if row[2] is None:
                     continue
@@ -77,31 +91,36 @@ class MemoryStore:
                 if sim > DEDUP_THRESHOLD:
                     raise DuplicateError(row[1])
         else:
-            rows = self.conn.execute(
-                "SELECT text FROM entries WHERE role = ? AND category = ?",
-                (role, category),
-            ).fetchall()
             for row in rows:
-                if row[0].strip().lower() == text.strip().lower():
-                    raise DuplicateError(row[0])
+                if row[1].strip().lower() == text.strip().lower():
+                    raise DuplicateError(row[1])
 
         emb_blob = pack_embedding(embedding) if embedding else None
         tags_json = json.dumps(tags)
         created = date.today().isoformat()
 
-        self.conn.execute(
+        cursor = self.conn.execute(
             "INSERT INTO entries (role, category, text, embedding, tags, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (role, category, text, emb_blob, tags_json, created),
         )
-        self.conn.commit()
+        if _commit:
+            self.conn.commit()
 
-        return {"text": text, "created_at": created, "tags": tags}
+        return {
+            "id": cursor.lastrowid,
+            "role": role,
+            "category": category,
+            "text": text,
+            "created_at": created,
+            "tags": tags,
+        }
 
     def count(self, role: str, category: str) -> int:
         """Entry count for a role/category."""
         row = self.conn.execute(
-            "SELECT COUNT(*) FROM entries WHERE role = ? AND category = ?",
+            "SELECT COUNT(*) FROM entries "
+            "WHERE role = ? AND category = ? AND invalidated_at IS NULL",
             (role, category),
         ).fetchone()
         return row[0] if row else 0
@@ -109,7 +128,8 @@ class MemoryStore:
     def list_categories(self, role: str) -> List[str]:
         """List available categories for a role."""
         rows = self.conn.execute(
-            "SELECT DISTINCT category FROM entries WHERE role = ?",
+            "SELECT DISTINCT category FROM entries "
+            "WHERE role = ? AND invalidated_at IS NULL",
             (role,),
         ).fetchall()
         return sorted(r[0] for r in rows)

@@ -48,7 +48,10 @@ class MemoryGC:
         """
         thresh = threshold if threshold is not None else DEDUP_THRESHOLD
 
-        query = "SELECT id, category, text, embedding FROM entries WHERE role = ?"
+        query = (
+            "SELECT id, category, text, embedding FROM entries "
+            "WHERE role = ? AND invalidated_at IS NULL"
+        )
         params: list = [role]
         if category:
             query += " AND category = ?"

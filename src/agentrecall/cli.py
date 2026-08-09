@@ -6,6 +6,8 @@ Usage:
 Commands:
     store      Store an entry with semantic dedup
     search     Search entries (semantic + keyword fallback)
+    invalidate Soft-invalidate a stale memory by ID
+    supersede  Atomically replace a stale memory by ID
     list       List categories for a role
     timeline   Chronological view of memories with timestamps
     export     Export memories as markdown or JSON
@@ -50,6 +52,8 @@ def _add_search_parser(subparsers):
     p.add_argument("--tag", help="Filter results to entries with this tag", default=None)
     p.add_argument("--limit", type=int, default=None,
                    help="Max number of results (top-N by relevance)")
+    p.add_argument("--show-id", action="store_true",
+                   help="Prefix each result with its stable entry ID")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_search)
 
@@ -67,6 +71,10 @@ def _add_timeline_parser(subparsers):
     p.add_argument("--last", help="Duration filter (e.g., 7d, 2w, 3m)", default=None)
     p.add_argument("--category", help="Filter to specific category", default=None)
     p.add_argument("--limit", type=int, help="Max entries (default: 100)", default=100)
+    p.add_argument("--show-id", action="store_true",
+                   help="Prefix each result with its stable entry ID")
+    p.add_argument("--include-invalidated", action="store_true",
+                   help="Include invalidated entries and lifecycle metadata")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_timeline)
 
@@ -77,8 +85,33 @@ def _add_export_parser(subparsers):
     p.add_argument("--format", dest="fmt", choices=["md", "json"], default="md",
                    help="Output format (default: md)")
     p.add_argument("--category", help="Filter to specific category", default=None)
+    p.add_argument("--include-invalidated", action="store_true",
+                   help="Include invalidated entries and lifecycle metadata")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_export)
+
+
+def _add_invalidate_parser(subparsers):
+    p = subparsers.add_parser(
+        "invalidate", help="Soft-invalidate a stale memory"
+    )
+    p.add_argument("entry_id", type=int, help="Stable entry ID")
+    p.add_argument("--reason", required=True,
+                   help="Why this memory is no longer current")
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_invalidate)
+
+
+def _add_supersede_parser(subparsers):
+    p = subparsers.add_parser(
+        "supersede", help="Atomically replace a stale memory"
+    )
+    p.add_argument("entry_id", type=int, help="Stable entry ID to replace")
+    p.add_argument("replacement_text", help="Corrected memory text")
+    p.add_argument("--tags", help="Comma-separated replacement tags", default=None)
+    p.add_argument("--reason", help="Why the old memory is stale", default=None)
+    p.add_argument("--db", help="Custom database path", default=None)
+    p.set_defaults(func=_cmd_supersede)
 
 
 def _add_stats_parser(subparsers):
@@ -141,7 +174,7 @@ def _cmd_search(args):
     from agentrecall.longterm.search import run_search
 
     return run_search(args.role, args.category, args.query, tag=args.tag,
-                      limit=args.limit, db_path=args.db)
+                      limit=args.limit, db_path=args.db, show_id=args.show_id)
 
 
 def _cmd_list(args):
@@ -160,6 +193,7 @@ def _cmd_timeline(args):
             last=args.last,
             category=args.category,
             limit=args.limit,
+            include_invalidated=args.include_invalidated,
         )
 
         if not entries:
@@ -167,10 +201,26 @@ def _cmd_timeline(args):
             return 1
 
         for entry in entries:
+            id_str = f"#{entry['id']} " if args.show_id else ""
             tags_str = ""
             if entry["tags"]:
                 tags_str = f"  [{', '.join(entry['tags'])}]"
-            print(f"[{entry['created_at']}] {entry['category']}: {entry['text']}{tags_str}")
+            audit_str = ""
+            if (
+                args.include_invalidated
+                and entry["status"] == "invalidated"
+            ):
+                linkage = ""
+                if entry["superseded_by"] is not None:
+                    linkage = f"; superseded by #{entry['superseded_by']}"
+                audit_str = (
+                    f"  [INVALIDATED {entry['invalidated_at']}; "
+                    f"reason: {entry['invalidation_reason']}{linkage}]"
+                )
+            print(
+                f"{id_str}[{entry['created_at']}] {entry['category']}: "
+                f"{entry['text']}{tags_str}{audit_str}"
+            )
 
         return 0
     finally:
@@ -182,11 +232,67 @@ def _cmd_export(args):
 
     exp = MemoryExport(db_path=args.db)
     try:
-        output = exp.export(args.role, fmt=args.fmt, category=args.category)
+        output = exp.export(
+            args.role,
+            fmt=args.fmt,
+            category=args.category,
+            include_invalidated=args.include_invalidated,
+        )
         print(output, end="")
         return 0
     finally:
         exp.close()
+
+
+def _cmd_invalidate(args):
+    from agentrecall.core.lifecycle import (
+        AlreadyInvalidatedError,
+        EntryNotFoundError,
+        MemoryLifecycle,
+    )
+
+    lifecycle = MemoryLifecycle(db_path=args.db)
+    try:
+        lifecycle.invalidate(args.entry_id, args.reason)
+        print(f"Invalidated entry #{args.entry_id}")
+        return 0
+    except (EntryNotFoundError, AlreadyInvalidatedError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        lifecycle.close()
+
+
+def _cmd_supersede(args):
+    from agentrecall.core.lifecycle import (
+        AlreadyInvalidatedError,
+        EntryNotFoundError,
+        MemoryLifecycle,
+    )
+    from agentrecall.core.store import DuplicateError
+
+    tags = None
+    if args.tags is not None:
+        tags = [tag.strip() for tag in args.tags.split(",") if tag.strip()]
+
+    lifecycle = MemoryLifecycle(db_path=args.db)
+    try:
+        result = lifecycle.supersede(
+            args.entry_id,
+            args.replacement_text,
+            tags=tags,
+            reason=args.reason,
+        )
+        print(f"#{result['old_id']} -> #{result['new_id']}")
+        return 0
+    except DuplicateError as exc:
+        print(f"Error: replacement duplicates active memory: {exc}", file=sys.stderr)
+        return 1
+    except (EntryNotFoundError, AlreadyInvalidatedError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        lifecycle.close()
 
 
 def _cmd_stats(args):
@@ -448,6 +554,8 @@ def main(argv=None):
 
     _add_store_parser(subparsers)
     _add_search_parser(subparsers)
+    _add_invalidate_parser(subparsers)
+    _add_supersede_parser(subparsers)
     _add_list_parser(subparsers)
     _add_timeline_parser(subparsers)
     _add_export_parser(subparsers)

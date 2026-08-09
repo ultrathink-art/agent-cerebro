@@ -28,7 +28,7 @@ def get_db_path(memory_home: Optional[str] = None) -> str:
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
-    """Create tables and indexes if they don't exist."""
+    """Create or non-destructively upgrade the long-term memory schema."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,11 +37,33 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             text TEXT NOT NULL,
             embedding BLOB,
             tags TEXT DEFAULT '[]',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            invalidated_at TEXT,
+            invalidation_reason TEXT,
+            superseded_by INTEGER
         )
     """)
+
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(entries)").fetchall()
+    }
+    lifecycle_columns = {
+        "invalidated_at": "TEXT",
+        "invalidation_reason": "TEXT",
+        "superseded_by": "INTEGER",
+    }
+    for column, column_type in lifecycle_columns.items():
+        if column not in columns:
+            conn.execute(
+                f"ALTER TABLE entries ADD COLUMN {column} {column_type}"
+            )
+
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_role_category ON entries(role, category)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_entries_active
+        ON entries(role, category, invalidated_at)
     """)
     conn.commit()
 

@@ -63,6 +63,52 @@ class TestSchema:
         assert "embedding" in col_names
         assert "tags" in col_names
         assert "created_at" in col_names
+        assert "invalidated_at" in col_names
+        assert "invalidation_reason" in col_names
+        assert "superseded_by" in col_names
+        conn.close()
+
+    def test_migrates_literal_v04_table_without_losing_rows(self, tmp_path):
+        db_path = str(tmp_path / "v04.sqlite3")
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT NOT NULL,
+                category TEXT NOT NULL,
+                text TEXT NOT NULL,
+                embedding BLOB,
+                tags TEXT DEFAULT '[]',
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO entries "
+            "(id, role, category, text, embedding, tags, created_at) "
+            "VALUES (42, 'coder', 'gotchas', 'real v0.4 row', X'0102', "
+            "'[\"legacy\"]', '2026-06-12')"
+        )
+        conn.commit()
+
+        ensure_schema(conn)
+        ensure_schema(conn)
+
+        row = conn.execute(
+            "SELECT id, role, category, text, hex(embedding), tags, created_at, "
+            "invalidated_at, invalidation_reason, superseded_by FROM entries"
+        ).fetchone()
+        assert row == (
+            42,
+            "coder",
+            "gotchas",
+            "real v0.4 row",
+            "0102",
+            '["legacy"]',
+            "2026-06-12",
+            None,
+            None,
+            None,
+        )
         conn.close()
 
 

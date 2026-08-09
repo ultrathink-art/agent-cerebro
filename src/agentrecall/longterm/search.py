@@ -15,6 +15,7 @@ def run_search(
     tag: Optional[str] = None,
     limit: Optional[int] = None,
     db_path: Optional[str] = None,
+    show_id: bool = False,
 ) -> int:
     """Search entries. Returns exit code (0=found, 1=not found)."""
     search = MemorySearch(db_path=db_path)
@@ -24,15 +25,26 @@ def run_search(
             print(f"No entries found for {role}/{category}", file=sys.stderr)
             return 1
 
-        matches = search.search(role, category, query, tag=tag, limit=limit)
+        if show_id:
+            records = search.search_records(
+                role, category, query, tag=tag, limit=limit
+            )
+            matches = [record["text"] for record in records]
+        else:
+            records = []
+            matches = search.search(role, category, query, tag=tag, limit=limit)
         if not matches:
             tag_msg = f" (tag: {tag})" if tag else ""
             print(f"No matches for: {query}{tag_msg}", file=sys.stderr)
             print(f"  (searched {count} entries in {role}/{category})", file=sys.stderr)
             return 1
 
-        for m in matches:
-            print(m)
+        if show_id:
+            for record in records:
+                print(f"#{record['id']}: {record['text']}")
+        else:
+            for match in matches:
+                print(match)
         return 0
     finally:
         search.close()

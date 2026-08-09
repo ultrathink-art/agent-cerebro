@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 (2026-08-07)
+
+Memory lifecycle support, driven by a dogfood incident where a known-unsafe
+long-term entry remained searchable and agents had to maintain a separate advisory
+denylist because Cerebro could neither invalidate nor supersede it.
+
+- **Addressable search and timeline** — opt-in `--show-id` output exposes stable
+  entry IDs without changing the default CLI output. The Python API keeps
+  `MemorySearch.search()` compatible as `list[str]` and adds `search_records()`.
+- **Soft invalidation** — `cerebro invalidate <id> --reason "..."` removes stale
+  beliefs from normal search, dedup, counts, timeline, export, and GC while keeping
+  the historical row auditable. Timeline and export add an explicit
+  `--include-invalidated` audit mode with timestamp and reason metadata.
+- **Atomic supersession** — `cerebro supersede <id> "replacement"` inserts the
+  correction in the original role/category, preserves or replaces tags, and links
+  the invalidated original through `superseded_by`, all in one SQLite transaction.
+  The target itself is exempted from duplicate detection; other active duplicates
+  still block the transition.
+- **Automatic 0.4.x migration** — existing SQLite databases gain the three lifecycle
+  columns and active-entry index in place. Existing rows and IDs are preserved.
+
+17 new tests (214 total), including a literal 0.4.x database migration fixture,
+transaction rollback, installed CLI behavior, and Python API compatibility.
+
 ## 0.4.1 (2026-06-12)
 
 Docs-only release.

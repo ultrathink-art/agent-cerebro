@@ -41,6 +41,12 @@ cerebro store social exhausted_stories "blue-green deploy order loss" --tags dep
 # Search (semantic + keyword fallback)
 cerebro search coder gotchas "kamal file not found"
 cerebro search coder gotchas "deploy issue" --tag critical
+cerebro search coder gotchas "deploy issue" --show-id
+
+# Correct stale memories explicitly; history is preserved
+cerebro invalidate 42 --reason "Kamal behavior changed in v2"
+cerebro supersede 57 "Use docker exec for live-container queries" --reason "Old command spawned a new container"
+cerebro supersede 61 "Current deployment rule" --tags deploy,current
 
 # List categories
 cerebro list coder
@@ -49,11 +55,14 @@ cerebro list coder
 cerebro timeline coder
 cerebro timeline coder --last 7d
 cerebro timeline coder --last 2w --category gotchas
+cerebro timeline coder --show-id
+cerebro timeline coder --include-invalidated --show-id
 
 # Export — dump all memories for a role
 cerebro export coder --format md > coder_memories.md
 cerebro export coder --format json > coder_memories.json
 cerebro export coder --format json --category gotchas
+cerebro export coder --format json --include-invalidated > coder_audit.json
 
 # Stats — storage metrics and category breakdown
 cerebro stats
@@ -71,25 +80,52 @@ cerebro check --all
 ### Python API
 
 ```python
-from agentrecall import MemoryStore, MemorySearch, MemoryTimeline, MemoryExport, MemoryStats, MemoryGC
+from agentrecall import (
+    MemoryExport,
+    MemoryGC,
+    MemoryLifecycle,
+    MemorySearch,
+    MemoryStats,
+    MemoryStore,
+    MemoryTimeline,
+)
 
 # Store
 store = MemoryStore()
-store.store("coder", "gotchas", "kamal spawns new container", tags=["kamal", "docker"])
+entry = store.store(
+    "coder", "gotchas", "kamal spawns new container", tags=["kamal", "docker"]
+)
+another_entry = store.store(
+    "coder", "gotchas", "use kamal app exec for live queries", tags=["kamal"]
+)
 
 # Search (with optional tag filter)
 search = MemorySearch()
 results = search.search("coder", "gotchas", "kamal file not found")
 results = search.search("coder", "gotchas", "deploy issue", tag="critical")
+# search() remains list[str]; search_records() adds stable IDs and metadata
+records = search.search_records("coder", "gotchas", "deploy issue")
+
+# Explicit lifecycle changes preserve history
+lifecycle = MemoryLifecycle()
+lifecycle.invalidate(entry["id"], "Kamal behavior changed in v2")
+transition = lifecycle.supersede(
+    another_entry["id"],
+    "Use docker exec for live-container queries",
+    reason="Old command spawned a new container",
+)
+# → {old_id, new_id, replacement}
 
 # Timeline
 timeline = MemoryTimeline()
 entries = timeline.timeline("coder", last="7d")
+audit_entries = timeline.timeline("coder", include_invalidated=True)
 
 # Export
 export = MemoryExport()
 markdown = export.export("coder", fmt="md")
 json_str = export.export("coder", fmt="json", category="gotchas")
+audit_json = export.export("coder", fmt="json", include_invalidated=True)
 
 # Stats
 stats = MemoryStats()
@@ -110,19 +146,35 @@ result = gc.gc("coder", dry_run=False)  # actually delete
 | Short-term (`memory/<role>.md`) | Long-term (SQLite + embeddings) |
 |---|---|
 | Active learnings, mistakes, feedback | Growing lists (exhausted topics, defect patterns) |
-| Max 80 lines, pruned regularly | Unlimited entries, never pruned |
+| Max 80 lines, pruned regularly | Auditable history; invalidated entries hidden by default |
 | Read in full at session start | Searched on-demand per query |
 
 ### Semantic Dedup
 
-Every `store` call embeds the text via OpenAI `text-embedding-3-small` and checks cosine similarity against all existing entries in the same role/category. Similarity > 0.92 blocks the store (raises `DuplicateError`).
+Every `store` call embeds the text via OpenAI `text-embedding-3-small` and checks cosine similarity against active entries in the same role/category. Similarity > 0.92 blocks the store (raises `DuplicateError`); it does not silently replace either entry.
 
 Without an API key, falls back to exact text matching.
+
+### Memory Lifecycle
+
+Search with `--show-id` to address a stable entry. `invalidate` soft-invalidates a
+known-stale belief. `supersede` inserts a corrected entry in the same role/category
+and links the invalidated original to it in one transaction. Omitting `--tags` on
+`supersede` preserves the original tags; supplying it replaces them.
+
+Normal search, timeline, export, dedup, and active counts ignore invalidated entries.
+Use `timeline --include-invalidated` or `export --include-invalidated` for an audit
+view with timestamps, reasons, and `superseded_by` linkage. Cerebro never interprets
+a duplicate write as a truth change: two similar memories can both be valid, so
+supersession is always explicit.
+
+Opening an existing 0.4.x SQLite database automatically adds the lifecycle columns
+in place. Existing rows and IDs are preserved; no manual migration command is needed.
 
 ### Search
 
 1. Embed the query
-2. Compute cosine similarity against all entries with embeddings
+2. Compute cosine similarity against all active entries with embeddings
 3. Return entries above threshold (0.75), sorted by similarity
 4. If no embedding matches: keyword fallback (>=50% keyword match)
 5. No API key (or embeddings unavailable): keyword-only search
@@ -181,10 +233,12 @@ Environment variables:
 
 ```
 cerebro store <role> <category> "text" [--tags t1,t2] [--db path]
-cerebro search <role> <category> "query" [--tag tagname] [--limit N] [--db path]
+cerebro search <role> <category> "query" [--tag tagname] [--limit N] [--show-id] [--db path]
+cerebro invalidate <entry_id> --reason "why it is stale" [--db path]
+cerebro supersede <entry_id> "replacement" [--tags t1,t2] [--reason "why"] [--db path]
 cerebro list <role> [--db path]
-cerebro timeline <role> [--last 7d] [--category cat] [--limit N] [--db path]
-cerebro export <role> [--format md|json] [--category cat] [--db path]
+cerebro timeline <role> [--last 7d] [--category cat] [--limit N] [--show-id] [--include-invalidated] [--db path]
+cerebro export <role> [--format md|json] [--category cat] [--include-invalidated] [--db path]
 cerebro stats [role] [--db path]
 cerebro gc <role> [--dry-run] [--apply] [--threshold 0.92] [--category cat] [--db path]
 cerebro check [--fix] [--long-term] [--all] [--dir path] [--db path]
