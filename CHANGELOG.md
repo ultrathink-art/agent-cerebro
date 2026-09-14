@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0 (2026-09-14)
+
+Lossless long-term memory backup, driven by dogfood portability and data-loss
+concerns: readable exports omit embeddings and normally omit lifecycle history.
+
+- **`cerebro backup <new-file> [--db source]`** and Python
+  **`backup_database()`** create an offline SQLite snapshot containing all roles,
+  stable IDs, embeddings, tags, timestamps, and invalidation/supersession history.
+- Uses SQLite's online backup API to include committed WAL writes without copying
+  a potentially stale main file. Snapshots open directly through existing `--db`.
+- Reads the source without schema migration; missing/invalid sources fail. Checks
+  snapshot integrity, creates owner-only files, publishes atomically without
+  overwriting existing files/symlinks, and cleans temporary files on failure.
+- Long-term SQLite only; short-term markdown files still require a separate copy.
+
+13 new tests cover WAL and uncommitted-write isolation, complete metadata/ID
+preservation, permissions, legacy schema, default home, CLI errors, existing-file
+aliases, invalid/missing sources, and concurrent destination creation.
+
 ## 0.5.0 (2026-08-07)
 
 Memory lifecycle support, driven by a dogfood incident where a known-unsafe

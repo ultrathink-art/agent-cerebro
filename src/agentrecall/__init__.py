@@ -1,6 +1,8 @@
 """Agent Cerebro — Persistent two-tier memory for AI agents."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
+
+from agentrecall.core.backup import backup_database
 
 from agentrecall.core.store import MemoryStore, DuplicateError
 from agentrecall.core.search import MemorySearch
@@ -18,6 +20,7 @@ from agentrecall.core.lifecycle import (
 )
 
 __all__ = [
+    "backup_database",
     "MemoryStore",
     "MemorySearch",
     "MemoryTimeline",

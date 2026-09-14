@@ -11,6 +11,7 @@ Commands:
     list       List categories for a role
     timeline   Chronological view of memories with timestamps
     export     Export memories as markdown or JSON
+    backup     Save a lossless SQLite snapshot of all long-term memory
     stats      Storage metrics, embedding coverage, category breakdown
     gc         Garbage collection — find/remove near-duplicate entries
     check      Validate memory files and DB health
@@ -100,6 +101,26 @@ def _add_invalidate_parser(subparsers):
                    help="Why this memory is no longer current")
     p.add_argument("--db", help="Custom database path", default=None)
     p.set_defaults(func=_cmd_invalidate)
+
+
+def _add_backup_parser(subparsers):
+    p = subparsers.add_parser("backup", help="Save all long-term memory as SQLite")
+    p.add_argument("destination", help="New backup file (must not already exist)")
+    p.add_argument("--db", help="Source database path", default=None)
+    p.set_defaults(func=_cmd_backup)
+
+
+def _cmd_backup(args):
+    import sqlite3
+    from agentrecall.core.backup import backup_database
+
+    try:
+        destination = backup_database(args.destination, db_path=args.db)
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        print(f"Backup failed: {exc}", file=sys.stderr)
+        return 2
+    print(f"Backup saved: {destination}")
+    return 0
 
 
 def _add_supersede_parser(subparsers):
@@ -559,6 +580,7 @@ def main(argv=None):
     _add_list_parser(subparsers)
     _add_timeline_parser(subparsers)
     _add_export_parser(subparsers)
+    _add_backup_parser(subparsers)
     _add_stats_parser(subparsers)
     _add_gc_parser(subparsers)
     _add_check_parser(subparsers)

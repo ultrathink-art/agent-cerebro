@@ -64,6 +64,12 @@ cerebro export coder --format json > coder_memories.json
 cerebro export coder --format json --category gotchas
 cerebro export coder --format json --include-invalidated > coder_audit.json
 
+# Lossless backup — all roles, embeddings, and lifecycle history, offline
+cerebro backup memory-backup.sqlite3
+cerebro backup memory-backup.sqlite3 --db /path/to/memory.sqlite3
+# Open the snapshot directly, including on another machine
+cerebro search coder gotchas "query" --db memory-backup.sqlite3
+
 # Stats — storage metrics and category breakdown
 cerebro stats
 cerebro stats coder
@@ -78,6 +84,29 @@ cerebro check --all
 ```
 
 ### Python API
+
+For a lossless long-term database snapshot:
+
+```python
+from agentrecall import backup_database
+
+backup_database("memory-backup.sqlite3", db_path="/path/to/memory.sqlite3")
+```
+
+`backup` captures committed data through SQLite's online backup API, including
+uncheckpointed WAL writes, every role, stable IDs, embeddings, tags, and invalidated
+or superseded history. It requires no API key and leaves the source schema unchanged.
+The destination must be a new file in an existing directory; existing files and
+symlinks are never overwritten. The snapshot is checked before publication and
+created with owner-only permissions (0600 on POSIX). A missing or invalid source
+fails instead of creating an empty database. CLI failures exit 2.
+
+Use `--db memory-backup.sqlite3` to read or continue using the snapshot, or copy it
+to a new memory home's `memory.sqlite3` while no processes use that destination.
+Keep the original until you have verified the copy. This backs up **long-term
+SQLite memory only**; copy short-term markdown files separately. Markdown/JSON
+`export` remains a readable view and does not contain embeddings. The backup is
+unencrypted, so protect it like the source database.
 
 ```python
 from agentrecall import (
@@ -239,6 +268,7 @@ cerebro supersede <entry_id> "replacement" [--tags t1,t2] [--reason "why"] [--db
 cerebro list <role> [--db path]
 cerebro timeline <role> [--last 7d] [--category cat] [--limit N] [--show-id] [--include-invalidated] [--db path]
 cerebro export <role> [--format md|json] [--category cat] [--include-invalidated] [--db path]
+cerebro backup <new-file> [--db source-path]
 cerebro stats [role] [--db path]
 cerebro gc <role> [--dry-run] [--apply] [--threshold 0.92] [--category cat] [--db path]
 cerebro check [--fix] [--long-term] [--all] [--dir path] [--db path]
