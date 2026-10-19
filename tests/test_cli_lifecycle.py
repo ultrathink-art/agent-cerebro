@@ -155,6 +155,6 @@ class TestCLIHelpAndVersion:
         _run(["timeline", "--help"])
         assert "--include-invalidated" in capsys.readouterr().out
 
-    def test_version_is_060(self, capsys):
+    def test_version_is_061(self, capsys):
         _run(["--version"])
-        assert capsys.readouterr().out == "agent-cerebro 0.6.0\n"
+        assert capsys.readouterr().out == "agent-cerebro 0.6.1\n"

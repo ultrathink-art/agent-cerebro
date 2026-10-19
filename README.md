@@ -205,10 +205,13 @@ in place. Existing rows and IDs are preserved; no manual migration command is ne
 1. Embed the query
 2. Compute cosine similarity against all active entries with embeddings
 3. Return entries above threshold (0.75), sorted by similarity
-4. If no embedding matches: keyword fallback (>=50% keyword match)
-5. No API key (or embeddings unavailable): keyword-only search
+4. Append keyword matches from entries without embeddings (>=50% keyword match),
+   so memories saved during an outage remain discoverable after recovery
+5. If no embedding matches, or query embeddings are unavailable: keyword-only
+   search across all candidates. If all candidates lack embeddings, skip the API
+   call entirely
 6. Optional `--tag` filter narrows results to entries with a specific tag
-7. Optional `--limit N` caps output to the top-N results (keeps agent context tight)
+7. Optional `--limit N` caps combined output, with semantic matches first (keeps agent context tight)
 
 ### Garbage Collection
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.1 (2026-10-19)
+
+Fix recall after embedding outages, identified during the monthly dogfood pass.
+
+- Search now appends keyword matches from entries saved without embeddings after
+  semantic matches. Previously, any semantic hit silently hid all unembedded
+  entries, even if they matched the query.
+- Tag and lifecycle filters apply to both groups; the result limit applies once
+  to the combined results, preserving semantic-first ordering and stable IDs.
+- Categories whose filtered candidates all lack embeddings use keyword search
+  directly, avoiding an unnecessary provider request and possible retry wait.
+- Existing keyword fallback across all candidates remains unchanged when no
+  semantic match exists or the query embedding is unavailable.
+
+Seven regression cases cover mixed coverage, ordering, limits, stable metadata,
+invalidation, tag filters, provider recovery, and provider-call avoidance.
+
 ## 0.6.0 (2026-09-14)
 
 Lossless long-term memory backup, driven by dogfood portability and data-loss

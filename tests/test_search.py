@@ -67,6 +67,53 @@ class TestSearch:
         search.close()
 
 
+class TestMixedCoverage:
+    def _seed(self, tmp_db):
+        store = MemoryStore(db_path=tmp_db)
+        # Outage-saved entries precede semantic entries in insertion order.
+        store.store("r", "c", "deploy offline lesson", tags=["ops"], embed_fn=null_embed_fn)
+        store.store("r", "c", "deploy unrelated tag", tags=["other"], embed_fn=null_embed_fn)
+        store.store("r", "c", "irrelevant offline lesson", tags=["ops"], embed_fn=null_embed_fn)
+        store.store("r", "c", "deploy obsolete lesson", tags=["ops"], embed_fn=null_embed_fn)
+        store.conn.execute("UPDATE entries SET invalidated_at = '2026-10-19' WHERE text = 'deploy obsolete lesson'")
+        store.conn.commit()
+        store.store("r", "c", "semantic operational lesson", tags=["ops"], embed_fn=make_embed_fn(0.1))
+        store.close()
+
+    def test_outage_memories_survive_provider_recovery(self, tmp_db):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        records = search.search_records("r", "c", "deploy", tag="ops", embed_fn=make_embed_fn(0.1))
+        assert [r["text"] for r in records] == ["semantic operational lesson", "deploy offline lesson"]
+        assert all(r["id"] > 0 and r["tags"] == ["ops"] and "embedding" not in r for r in records)
+        assert len({r["id"] for r in records}) == 2
+        search.close()
+
+    @pytest.mark.parametrize("limit,expected", [(1, 1), (2, 2), (0, 2), (None, 2)])
+    def test_limit_applies_after_combining_results(self, tmp_db, limit, expected):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        results = search.search("r", "c", "deploy", tag="ops", embed_fn=make_embed_fn(0.1), limit=limit)
+        assert len(results) == expected
+        assert results[0] == "semantic operational lesson"
+        search.close()
+
+    def test_unembedded_filtered_category_never_calls_provider(self, tmp_db):
+        self._seed(tmp_db)
+        def unexpected_call(text):
+            pytest.fail("unembedded-only candidates must not call the embedding provider")
+        search = MemorySearch(db_path=tmp_db)
+        assert search.search("r", "c", "deploy", tag="other", embed_fn=unexpected_call) == ["deploy unrelated tag"]
+        assert search.search("r", "c", "missing", tag="other", embed_fn=unexpected_call) == []
+        search.close()
+
+    def test_outage_fallback_does_not_duplicate_unembedded_results(self, tmp_db):
+        self._seed(tmp_db)
+        search = MemorySearch(db_path=tmp_db)
+        assert search.search("r", "c", "deploy", tag="ops", embed_fn=null_embed_fn) == ["deploy offline lesson"]
+        search.close()
+
+
 class TestSearchLimit:
     def _seed(self, tmp_db):
         """Insert 3 entries sharing one embedding (all match the query)."""

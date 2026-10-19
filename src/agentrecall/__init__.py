@@ -1,6 +1,6 @@
 """Agent Cerebro — Persistent two-tier memory for AI agents."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from agentrecall.core.backup import backup_database
 

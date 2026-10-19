@@ -102,6 +102,13 @@ class MemorySearch:
         if not records:
             return []
 
+        unembedded = [record for record in records if record["embedding"] is None]
+        if len(unembedded) == len(records):
+            # Nothing can be compared semantically; avoid a needless API call.
+            return _public_records(
+                _apply_limit(keyword_fallback_records(records, query), limit)
+            )
+
         if embed_fn is None:
             embed_fn = get_embedding
 
@@ -135,6 +142,9 @@ class MemorySearch:
                 _apply_limit(keyword_fallback_records(records, query), limit)
             )
 
+        # Entries saved during an outage must remain discoverable after the
+        # provider recovers, even when another entry matches semantically.
+        results.extend(keyword_fallback_records(unembedded, query))
         return _public_records(_apply_limit(results, limit))
 
     def count(self, role: str, category: str) -> int:
