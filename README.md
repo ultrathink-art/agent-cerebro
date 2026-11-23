@@ -34,7 +34,7 @@ export OPENAI_API_KEY="sk-..."
 # Initialize
 cerebro init
 
-# Store a memory (auto-dedup via cosine similarity >0.92)
+# Store a memory (exact-text dedup + cosine similarity >0.92)
 cerebro store coder gotchas "kamal app exec spawns new container, use docker exec"
 cerebro store social exhausted_stories "blue-green deploy order loss" --tags deploy,sqlite
 
@@ -192,6 +192,13 @@ and links the invalidated original to it in one transaction. Omitting `--tags` o
 `supersede` preserves the original tags; supplying it replaces them.
 
 Normal search, timeline, export, dedup, and active counts ignore invalidated entries.
+
+Within each role/category, storing the same text (ignoring case and outer
+whitespace) is rejected before calling the embedding provider. This also works
+when an entry was saved during an outage and embeddings later recover. Other
+text still uses semantic deduplication when embeddings are available. Existing
+duplicates are left unchanged; the check prevents new duplicate writes.
+
 Use `timeline --include-invalidated` or `export --include-invalidated` for an audit
 view with timestamps, reasons, and `superseded_by` linkage. Cerebro never interprets
 a duplicate write as a truth change: two similar memories can both be valid, so

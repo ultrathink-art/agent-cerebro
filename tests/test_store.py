@@ -9,6 +9,46 @@ from conftest import fake_embedding, make_embed_fn, null_embed_fn
 
 
 class TestStore:
+    @pytest.mark.parametrize("existing_embed", [null_embed_fn, make_embed_fn(0.1)])
+    @pytest.mark.parametrize("next_embed", [null_embed_fn, make_embed_fn(0.5)])
+    def test_exact_duplicate_is_rejected_across_embedding_availability(
+        self, tmp_db, existing_embed, next_embed
+    ):
+        store = MemoryStore(db_path=tmp_db)
+        original = store.store(
+            "coder", "gotchas", "  Preserve outage memories  ",
+            tags=["original"], embed_fn=existing_embed,
+        )
+        before = store.conn.execute("SELECT * FROM entries").fetchall()
+        calls = []
+
+        def embed(text):
+            calls.append(text)
+            return next_embed(text)
+
+        with pytest.raises(DuplicateError, match="Preserve outage memories"):
+            store.store(
+                "coder", "gotchas", "preserve OUTAGE memories",
+                tags=["retry"], embed_fn=embed,
+            )
+
+        assert calls == []  # A known duplicate needs no provider request.
+        assert store.conn.execute("SELECT * FROM entries").fetchall() == before
+        assert store.count(original["role"], original["category"]) == 1
+        store.close()
+
+    def test_outage_recovery_allows_distinct_text_and_other_scopes(self, tmp_db):
+        store = MemoryStore(db_path=tmp_db)
+        store.store("coder", "gotchas", "outage memory", embed_fn=null_embed_fn)
+        for role, category, text in [
+            ("coder", "gotchas", "distinct memory"),
+            ("qa", "gotchas", "outage memory"),
+            ("coder", "learnings", "outage memory"),
+        ]:
+            store.store(role, category, text, embed_fn=make_embed_fn(0.1))
+        assert store.conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 4
+        store.close()
+
     def test_store_creates_entry(self, tmp_db):
         store = MemoryStore(db_path=tmp_db)
         entry = store.store(

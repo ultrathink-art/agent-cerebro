@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.2 (2026-11-23)
+
+Prevent duplicate memories after embedding recovery, found while dogfooding the
+outage-tolerant storage and recall workflow.
+
+- Exact text deduplication now applies whether either entry has an embedding,
+  ignoring case and outer whitespace as in offline mode. Retrying an entry saved
+  during an outage no longer inserts a duplicate after the provider recovers.
+- Known exact duplicates are rejected before requesting an embedding, avoiding
+  unnecessary provider calls. Semantic deduplication still applies to other text.
+- Superseding a memory with another active outage-era entry's text now rejects
+  the entire transition without changing the target or its history. Role/category
+  isolation, invalidated-entry exclusion, and target exemption remain intact.
+
+Seven regression cases cover availability transitions, changed vectors, provider
+call avoidance, stored metadata preservation, namespace isolation, and lifecycle
+behavior. Existing duplicates are not modified; this release prevents new ones.
+
 ## 0.6.1 (2026-10-19)
 
 Fix recall after embedding outages, identified during the monthly dogfood pass.

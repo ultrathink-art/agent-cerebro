@@ -61,16 +61,12 @@ class MemoryStore:
     ) -> Dict[str, Any]:
         """Store a new entry. Returns entry dict on success.
 
-        Raises DuplicateError if semantically duplicate (cosine > 0.92).
-        Falls back to exact text dedup when no API key.
+        Raises DuplicateError for exact text (ignoring case/outer whitespace)
+        or semantic duplicates (cosine > 0.92). Exact dedup runs before calling
+        the embedding provider and works across outages and recovery.
         """
         _validate_inputs(role, category, text)
         tags = tags or []
-
-        if embed_fn is None:
-            embed_fn = get_embedding
-
-        embedding = embed_fn(text)
 
         dedup_query = (
             "SELECT id, text, embedding FROM entries "
@@ -82,6 +78,15 @@ class MemoryStore:
             dedup_params.append(_exclude_entry_id)
 
         rows = self.conn.execute(dedup_query, dedup_params).fetchall()
+        normalized_text = text.strip().lower()
+        for row in rows:
+            if row[1].strip().lower() == normalized_text:
+                raise DuplicateError(row[1])
+
+        if embed_fn is None:
+            embed_fn = get_embedding
+        embedding = embed_fn(text)
+
         if embedding is not None:
             for row in rows:
                 if row[2] is None:
@@ -89,10 +94,6 @@ class MemoryStore:
                 stored_emb = unpack_embedding(row[2])
                 sim = cosine_similarity(embedding, stored_emb)
                 if sim > DEDUP_THRESHOLD:
-                    raise DuplicateError(row[1])
-        else:
-            for row in rows:
-                if row[1].strip().lower() == text.strip().lower():
                     raise DuplicateError(row[1])
 
         emb_blob = pack_embedding(embedding) if embedding else None

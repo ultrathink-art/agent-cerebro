@@ -122,6 +122,47 @@ class TestInvalidation:
 
 
 class TestSupersession:
+    def test_outage_duplicate_blocks_supersession_without_changing_history(self, tmp_db):
+        store = MemoryStore(db_path=tmp_db)
+        target = store.store("coder", "gotchas", "old belief", embed_fn=null_embed_fn)
+        store.store("coder", "gotchas", "current belief", embed_fn=null_embed_fn)
+        lifecycle = MemoryLifecycle(db_path=tmp_db)
+        before = store.conn.execute("SELECT * FROM entries ORDER BY id").fetchall()
+
+        with pytest.raises(DuplicateError, match="current belief"):
+            lifecycle.supersede(
+                target["id"], " CURRENT BELIEF ", embed_fn=make_embed_fn(0.1)
+            )
+
+        assert store.conn.execute("SELECT * FROM entries ORDER BY id").fetchall() == before
+        lifecycle.close()
+        store.close()
+
+    def test_same_text_supersession_exempts_target_after_outage(self, tmp_db):
+        store = MemoryStore(db_path=tmp_db)
+        target = store.store("coder", "gotchas", "verified belief", embed_fn=null_embed_fn)
+        lifecycle = MemoryLifecycle(db_path=tmp_db)
+        result = lifecycle.supersede(
+            target["id"], "verified belief", tags=["verified"],
+            reason="Reverified", embed_fn=make_embed_fn(0.1),
+        )
+        assert result["new_id"] != target["id"]
+        assert store.count("coder", "gotchas") == 1
+        row = store.conn.execute(
+            "SELECT invalidated_at, superseded_by FROM entries WHERE id = ?",
+            (target["id"],),
+        ).fetchone()
+        assert row[0] is not None
+        assert row[1] == result["new_id"]
+        lifecycle.invalidate(result["new_id"], "Outdated")
+        restored = store.store(
+            "coder", "gotchas", "verified belief", embed_fn=make_embed_fn(0.1)
+        )
+        assert restored["id"] != result["new_id"]
+        assert store.count("coder", "gotchas") == 1
+        lifecycle.close()
+        store.close()
+
     def test_similar_replacement_bypasses_target_and_inherits_context(self, tmp_db):
         store = MemoryStore(db_path=tmp_db)
         old = store.store(
